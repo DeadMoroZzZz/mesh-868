@@ -23,7 +23,7 @@
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; justify-content: center; align-items: center; padding: 20px; }
         .modal-content { background: var(--surf); padding: 25px; border-radius: 15px; border: 1px solid #333; text-align: center; max-width: 300px; width: 100%; }
         #qrcode { margin: 15px auto; padding: 10px; background: #fff; border-radius: 10px; width: 128px; height: 128px; display: flex; justify-content: center; align-items: center; }
-        .user-photo { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid #333; margin-bottom: 20px; box-shadow: 0 0 15px rgba(0, 230, 118, 0.2); }
+        .user-photo { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid #333; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -32,11 +32,9 @@
         <div class="info-icon" onclick="toggleInfoModal()">ℹ️</div>
         <img class="user-photo" id="user-avatar" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="Avatar">
         <h2 style="color:var(--prim); margin:0 0 10px 0; letter-spacing:2px;">ТЕРМИНАЛ v7.8</h2>
-        <input type="password" id="access-code" placeholder="Код ноды">
-        <input type="password" id="crypto-key" placeholder="Ключ истории">
-        <hr style="width:100%; max-width:320px; border:0; border-top:1px solid #333; margin:10px 0;">
-        <input type="text" id="mqtt-topic" placeholder="Топик группы">
-        <input type="password" id="topic-pass" placeholder="Пароль группы">
+        <p style="font-size: 12px; color: #666;">Система готова к подключению</p>
+        <input type="text" id="mqtt-topic" placeholder="Топик (необязательно)">
+        <input type="password" id="crypto-key" placeholder="Ключ шифрования">
         <button onclick="handleConnect()">УСТАНОВИТЬ СВЯЗЬ</button>
     </div>
 
@@ -45,7 +43,6 @@
             <h3 id="modal-title" style="color:var(--prim); margin-top:0;">О ПРОГРАММЕ</h3>
             <p id="modal-desc">Автор: <b>Захарченко Виктор</b></p>
             <div id="qrcode"></div>
-            <p id="modal-footer" style="font-size:11px; color:var(--prim);">t.me/just_be_freee</p>
             <button onclick="toggleInfoModal()" style="background:#333; color:#fff; padding:10px; margin-top:10px; border:none; border-radius:8px;">ЗАКРЫТЬ</button>
         </div>
     </div>
@@ -59,7 +56,6 @@
     <div id="screen-chat" class="screen" style="padding:0;">
         <div style="width:100%; max-width:600px; display:flex; justify-content:space-between; padding:12px; font-size:11px; border-bottom:1px solid #222; background:#111; align-items:center;">
             <span id="display-name" style="color:var(--prim); font-weight:bold;"></span>
-            <span onclick="shareConfig()" style="cursor:pointer; font-size:16px;" title="Поделиться доступом">📲</span>
             <span id="net-status" style="color:#444;">OFFLINE</span>
             <span id="batt-info">🔋 --%</span>
         </div>
@@ -83,60 +79,38 @@
     const TO_RADIO_UUID = "63820054-0617-4861-9c60-496350f3dd90";
     const FROM_RADIO_UUID = "2086938a-446a-466d-8a21-4ba29c716246";
 
-    let toChar, mqttClient = null, cryptoKey = "", authFails = 0, currentTopic = "", qrcode = null;
-    let savedTopicName = "", savedTopicPass = "";
+    let toChar, mqttClient = null, cryptoKey = "", currentTopic = "", qrcode = null;
 
     window.onload = () => {
         qrcode = new QRCode(document.getElementById("qrcode"), { text: "https://t.me/just_be_freee", width: 128, height: 128 });
-        const params = new URLSearchParams(window.location.search);
-        if(params.has('t')) document.getElementById('mqtt-topic').value = params.get('t');
-        if(params.has('p')) document.getElementById('topic-pass').value = params.get('p');
     };
 
     function toggleInfoModal() {
         const m = document.getElementById('info-modal');
-        if (m.style.display !== 'flex') {
-            document.getElementById('modal-title').innerText = "О ПРОГРАММЕ";
-            document.getElementById('modal-desc').innerHTML = "Автор: <b>Захарченко Виктор</b>";
-            document.getElementById('modal-footer').innerText = "t.me/just_be_freee";
-            qrcode.clear(); qrcode.makeCode("https://t.me/just_be_freee");
-        }
         m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
     }
 
-    function shareConfig() {
-        const configUrl = `${window.location.href.split('?')[0]}?t=${encodeURIComponent(savedTopicName)}&p=${encodeURIComponent(savedTopicPass)}`;
-        document.getElementById('modal-title').innerText = "НАСТРОЙКИ ГРУППЫ";
-        document.getElementById('modal-desc').innerText = "Сканируйте для входа в канал";
-        qrcode.clear(); qrcode.makeCode(configUrl);
-        document.getElementById('info-modal').style.display = 'flex';
-    }
-
-    const crypt = (t, k) => t.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ k.charCodeAt(i % k.length))).join('');
-
-    async function getHashedTopic(name, pass) {
-        const msgUint8 = new TextEncoder().encode(name.trim().toUpperCase() + pass);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return "m868/" + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
-    }
+    const crypt = (t, k) => {
+        if(!k) return t;
+        return t.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ k.charCodeAt(i % k.length))).join('');
+    };
 
     async function handleConnect() {
-        const code = document.getElementById('access-code').value.trim();
-        savedTopicName = document.getElementById('mqtt-topic').value.trim() || "GENERAL";
-        savedTopicPass = document.getElementById('topic-pass').value.trim();
+        // УДАЛЕНО: Проверка кода ноды и математическая сумма
         cryptoKey = document.getElementById('crypto-key').value.trim();
-
-        let sum = 0; for(let i=0; i<code.length; i++) sum += code.charCodeAt(i);
-        if (!/^(?=.*[a-zA-Z])(?=.*\d).{6,}$/.test(code) || sum % 7 !== 0) {
-            authFails++; if(authFails >= 3) { localStorage.clear(); location.reload(); }
-            return alert("Неверный код доступа!");
-        }
-
-        currentTopic = await getHashedTopic(savedTopicName, savedTopicPass);
+        let topicName = document.getElementById('mqtt-topic').value.trim() || "GENERAL";
+        
+        // Генерация топика
+        const msgUint8 = new TextEncoder().encode(topicName.toUpperCase());
+        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        currentTopic = "m868/" + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
 
         try {
-            const dev = await navigator.bluetooth.requestDevice({ filters:[{namePrefix:'Meshtastic'}], optionalServices:[SERVICE_UUID] });
+            const dev = await navigator.bluetooth.requestDevice({ 
+                filters:[{namePrefix:'Meshtastic'}], 
+                optionalServices:[SERVICE_UUID] 
+            });
             const srv = await dev.gatt.connect();
             const svc = await srv.getPrimaryService(SERVICE_UUID);
             toChar = await svc.getCharacteristic(TO_RADIO_UUID);
@@ -147,20 +121,26 @@
             initMQTT();
             document.getElementById('screen-auth').classList.remove('active');
             document.getElementById('screen-nick').classList.add('active');
-        } catch(e) { alert("Bluetooth Error: Нужен HTTPS или localhost! " + e.message); }
+        } catch(e) { 
+            // Если Bluetooth не сработал, всё равно пускаем в чат (для работы через MQTT)
+            console.log("BLE skip:", e);
+            initMQTT();
+            document.getElementById('screen-auth').classList.remove('active');
+            document.getElementById('screen-nick').classList.add('active');
+        }
     }
 
     function initMQTT() {
         if (!navigator.onLine) return;
         mqttClient = mqtt.connect(MQTT_CONFIG.host, { username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass, clientId: 'v_'+Math.random().toString(16).substr(2, 4) });
         mqttClient.on('connect', () => {
-            const s = document.getElementById('net-status');
-            s.innerText = "ONLINE"; s.style.color = "var(--prim)";
+            document.getElementById('net-status').innerText = "ONLINE";
+            document.getElementById('net-status').style.color = "var(--prim)";
             mqttClient.subscribe(currentTopic);
         });
         mqttClient.on('message', (topic, msg) => {
             const dec = crypt(msg.toString(), cryptoKey);
-            if(!isDup(dec)) { addUI(dec, 'other'); sendRaw(dec); saveMsg(dec, 'other'); }
+            addUI(dec, 'other');
         });
     }
 
@@ -171,16 +151,15 @@
         document.getElementById('display-name').innerText = n.toUpperCase();
         document.getElementById('screen-nick').classList.remove('active');
         document.getElementById('screen-chat').classList.add('active');
-        loadHist();
     }
 
     async function sendMsg() {
         const i = document.getElementById('chat-input'), n = localStorage.getItem('m_nick');
         if(!i.value.trim()) return;
         const txt = `${n}: ${i.value.trim()}`;
-        addUI(txt, 'self'); saveMsg(txt, 'self');
-        await sendRaw(txt);
-        if(mqttClient && mqttClient.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
+        addUI(txt, 'self');
+        try { await toChar.writeValue(new TextEncoder().encode(txt)); } catch(e){}
+        if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
         i.value = "";
     }
 
@@ -188,9 +167,9 @@
         const data = new Uint8Array(e.target.value.buffer);
         if(data[0] === 0x08) document.getElementById('batt-info').innerText = `🔋 ${data[1]}%`;
         const t = new TextDecoder().decode(data).replace(/[^\x20-\x7EА-Яа-яЁё:/,;=.-]/g, '');
-        if(t.includes(':') && !isDup(t)) { 
-            addUI(t, 'other'); saveMsg(t, 'other'); 
-            if(mqttClient && mqttClient.connected) mqttClient.publish(currentTopic, crypt(t, cryptoKey));
+        if(t.includes(':')) {
+            addUI(t, 'other');
+            if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(t, cryptoKey));
         }
     }
 
@@ -200,34 +179,17 @@
         b.appendChild(e); b.scrollTop = b.scrollHeight;
     }
 
-    let lastMsgs = [];
-    function isDup(t) { if(lastMsgs.includes(t)) return true; lastMsgs.push(t); if(lastMsgs.length>20) lastMsgs.shift(); return false; }
-    
-    function saveMsg(t, type) { 
-        let h = JSON.parse(localStorage.getItem('h_v7')||'[]');
-        h.push({t: crypt(t, cryptoKey), type});
-        if(h.length>50) h.shift();
-        localStorage.setItem('h_v7', JSON.stringify(h));
-    }
-
-    function loadHist() { JSON.parse(localStorage.getItem('h_v7')||'[]').forEach(m => addUI(crypt(m.t, cryptoKey), m.type)); }
-    
-    async function sendRaw(t) { try { await toChar.writeValue(new TextEncoder().encode(t)); } catch(e){} }
-    
     async function triggerSOS() { 
-        const n = localStorage.getItem('m_nick'); 
-        const txt = `SOS:${n}`;
-        await sendRaw(txt); 
+        const txt = `SOS:${localStorage.getItem('m_nick')}`;
         addUI("🚨 SOS ОТПРАВЛЕН", "self"); 
-        if(mqttClient && mqttClient.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
+        if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
     }
 
     function sendLocation() { 
-        navigator.geolocation.getCurrentPosition(async p => {
+        navigator.geolocation.getCurrentPosition(p => {
             const txt = `LOC:${localStorage.getItem('m_nick')}:${p.coords.latitude.toFixed(6)}:${p.coords.longitude.toFixed(6)}`;
             addUI("📍 Координаты отправлены", "self"); 
-            await sendRaw(txt);
-            if(mqttClient && mqttClient.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
+            if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
         }); 
     }
 
