@@ -2,198 +2,103 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Mesh Tactical v7.8 Master</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesh Secure Interface</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <style>
-        :root { --bg: #0a0a0a; --surf: #161616; --prim: #00e676; --err: #ff5252; --txt: #e0e0e0; }
-        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--txt); margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        .screen { display: none; flex-direction: column; height: 100%; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; overflow-y: auto; position: relative; }
-        .active { display: flex; }
-        input { width: 100%; max-width: 320px; padding: 12px; background: var(--surf); border: 1px solid #333; border-radius: 8px; color: #fff; margin-bottom: 8px; font-size: 14px; outline: none; text-align: center; }
-        button { background: var(--prim); color: #000; border: none; padding: 15px; border-radius: 12px; font-weight: bold; cursor: pointer; width: 100%; max-width: 320px; margin-top: 10px; }
-        #messages { flex: 1; width: 100%; max-width: 600px; overflow-y: auto; background: #000; padding: 15px; margin: 5px auto; display: flex; flex-direction: column; gap: 12px; border: 1px solid #222; }
-        .msg { padding: 10px 14px; border-radius: 15px; max-width: 85%; font-size: 14px; position: relative; line-height: 1.4; }
-        .self { align-self: flex-end; background: var(--prim); color: #000; border-bottom-right-radius: 2px; }
-        .other { align-self: flex-start; background: var(--surf); border-bottom-left-radius: 2px; }
-        #chat-controls { width: 100%; max-width: 600px; display: flex; gap: 5px; padding: 10px; background: var(--bg); margin: 0 auto; }
-        .ctrl-btn { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px; font-size: 18px; }
-        .info-icon { position: absolute; top: 15px; right: 15px; font-size: 20px; cursor: pointer; opacity: 0.5; z-index: 10; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; justify-content: center; align-items: center; padding: 20px; }
-        .modal-content { background: var(--surf); padding: 25px; border-radius: 15px; border: 1px solid #333; text-align: center; max-width: 300px; width: 100%; }
-        #qrcode { margin: 15px auto; padding: 10px; background: #fff; border-radius: 10px; width: 128px; height: 128px; display: flex; justify-content: center; align-items: center; }
-        .user-photo { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid #333; margin-bottom: 20px; }
+        :root { --bg: #0f0f0f; --card: #1e1e1e; --accent: #00e676; --text: #e0e0e0; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-container { background: var(--card); padding: 2rem; border-radius: 16px; width: 100%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+        .hidden { display: none; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        button:hover { opacity: 0.8; }
+        #chat-window { height: 300px; overflow-y: auto; background: #121212; border-radius: 8px; padding: 10px; margin-bottom: 10px; border: 1px solid #222; }
+        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; background: red; margin-right: 5px; }
+        .connected { background: var(--accent); }
     </style>
 </head>
 <body>
 
-    <div id="screen-auth" class="screen active">
-        <div class="info-icon" onclick="toggleInfoModal()">ℹ️</div>
-        <img class="user-photo" id="user-avatar" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="Avatar">
-        <h2 style="color:var(--prim); margin:0 0 10px 0; letter-spacing:2px;">ТЕРМИНАЛ v7.8</h2>
-        <p style="font-size: 12px; color: #666;">Система готова к подключению</p>
-        <input type="text" id="mqtt-topic" placeholder="Топик (необязательно)">
-        <input type="password" id="crypto-key" placeholder="Ключ шифрования">
-        <button onclick="handleConnect()">УСТАНОВИТЬ СВЯЗЬ</button>
-    </div>
+<div class="app-container" id="login-screen">
+    <h2 style="text-align:center">Mesh 868 Access</h2>
+    <p style="font-size: 0.9em; color: #888;">Введите ваш персональный ключ ноды</p>
+    <input type="text" id="pass-key" placeholder="Пример: A4B7D2C9" maxlength="8">
+    <button onclick="authenticate()">Авторизоваться</button>
+</div>
 
-    <div id="info-modal" class="modal" onclick="toggleInfoModal()">
-        <div class="modal-content" onclick="event.stopPropagation()">
-            <h3 id="modal-title" style="color:var(--prim); margin-top:0;">О ПРОГРАММЕ</h3>
-            <p id="modal-desc">Автор: <b>Захарченко Виктор</b></p>
-            <div id="qrcode"></div>
-            <button onclick="toggleInfoModal()" style="background:#333; color:#fff; padding:10px; margin-top:10px; border:none; border-radius:8px;">ЗАКРЫТЬ</button>
-        </div>
+<div class="app-container hidden" id="main-app">
+    <div style="margin-bottom: 15px;">
+        <span id="status-dot" class="status-dot"></span>
+        <small id="status-text">Нода не найдена</small>
     </div>
-
-    <div id="screen-nick" class="screen">
-        <h1>ПОЗЫВНОЙ</h1>
-        <input type="text" id="user-nick" placeholder="Введите имя" maxlength="12">
-        <button onclick="startSession()">НАЧАТЬ</button>
-    </div>
-
-    <div id="screen-chat" class="screen" style="padding:0;">
-        <div style="width:100%; max-width:600px; display:flex; justify-content:space-between; padding:12px; font-size:11px; border-bottom:1px solid #222; background:#111; align-items:center;">
-            <span id="display-name" style="color:var(--prim); font-weight:bold;"></span>
-            <span id="net-status" style="color:#444;">OFFLINE</span>
-            <span id="batt-info">🔋 --%</span>
-        </div>
-        <div id="messages"></div>
-        <div id="chat-controls">
-            <button onclick="triggerSOS()" class="ctrl-btn" style="background:var(--err)">🆘</button>
-            <button onclick="sendLocation()" class="ctrl-btn" style="background:#333">📍</button>
-            <input type="text" id="chat-input" placeholder="Текст..." style="margin:0; flex:1; text-align:left;">
-            <button onclick="sendMsg()" class="ctrl-btn" style="background:var(--prim)">➤</button>
-        </div>
-    </div>
+    <div id="chat-window"></div>
+    <input type="text" id="msg-input" placeholder="Введите сообщение...">
+    <button id="ble-btn" onclick="initBle()">Подключить Bluetooth</button>
+    <button id="send-btn" class="hidden" onclick="sendMsg()">Отправить в эфир</button>
+</div>
 
 <script>
-    const MQTT_CONFIG = {
-        host: "wss://broker.shiftr.io",
-        user: "ВАШ_TOKEN_KEY", 
-        pass: "ВАШ_TOKEN_SECRET"
-    };
+    // Массив из 100 паролей (сокращено для примера)
+    const VAULT = ["A4B7D2C9", "7D8E9F0A", "1B2C3D4E", "F5A6B7C8"]; // Сюда вставить все 100
 
-    const SERVICE_UUID = "6ba1b088-1b4d-4d2a-942b-bc6830501f28";
-    const TO_RADIO_UUID = "63820054-0617-4861-9c60-496350f3dd90";
-    const FROM_RADIO_UUID = "2086938a-446a-466d-8a21-4ba29c716246";
-
-    let toChar, mqttClient = null, cryptoKey = "", currentTopic = "", qrcode = null;
-
-    window.onload = () => {
-        qrcode = new QRCode(document.getElementById("qrcode"), { text: "https://t.me/just_be_freee", width: 128, height: 128 });
-    };
-
-    function toggleInfoModal() {
-        const m = document.getElementById('info-modal');
-        m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
+    function authenticate() {
+        const input = document.getElementById('pass-key').value.toUpperCase();
+        if (VAULT.includes(input)) {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+        } else {
+            alert("Ключ не валиден!");
+        }
     }
 
-    const crypt = (t, k) => {
-        if(!k) return t;
-        return t.split('').map((c, i) => String.fromCharCode(c.charCodeAt(0) ^ k.charCodeAt(i % k.length))).join('');
-    };
+    let bleDevice, bleCharacteristic;
 
-    async function handleConnect() {
-        // УДАЛЕНО: Проверка кода ноды и математическая сумма
-        cryptoKey = document.getElementById('crypto-key').value.trim();
-        let topicName = document.getElementById('mqtt-topic').value.trim() || "GENERAL";
-        
-        // Генерация топика
-        const msgUint8 = new TextEncoder().encode(topicName.toUpperCase());
-        const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        currentTopic = "m868/" + hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
-
+    async function initBle() {
         try {
-            const dev = await navigator.bluetooth.requestDevice({ 
-                filters:[{namePrefix:'Meshtastic'}], 
-                optionalServices:[SERVICE_UUID] 
+            // Стандартный UUID сервиса Meshtastic
+            const SERVICE_UUID = "cb0b9a0b-184a-46a6-bc0d-20591b9e0441";
+            const CHAR_UUID    = "2566085a-035b-4375-9c59-d890041235b2";
+
+            bleDevice = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: 'Meshtastic' }],
+                optionalServices: [SERVICE_UUID]
             });
-            const srv = await dev.gatt.connect();
-            const svc = await srv.getPrimaryService(SERVICE_UUID);
-            toChar = await svc.getCharacteristic(TO_RADIO_UUID);
-            const from = await svc.getCharacteristic(FROM_RADIO_UUID);
-            await from.startNotifications();
-            from.addEventListener('characteristicvaluechanged', handleRadioIn);
+
+            const server = await bleDevice.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            bleCharacteristic = await service.getCharacteristic(CHAR_UUID);
+
+            document.getElementById('status-dot').classList.add('connected');
+            document.getElementById('status-text').innerText = "Подключено: " + bleDevice.name;
+            document.getElementById('ble-btn').classList.add('hidden');
+            document.getElementById('send-btn').classList.remove('hidden');
             
-            initMQTT();
-            document.getElementById('screen-auth').classList.remove('active');
-            document.getElementById('screen-nick').classList.add('active');
-        } catch(e) { 
-            // Если Bluetooth не сработал, всё равно пускаем в чат (для работы через MQTT)
-            console.log("BLE skip:", e);
-            initMQTT();
-            document.getElementById('screen-auth').classList.remove('active');
-            document.getElementById('screen-nick').classList.add('active');
+            logToChat("Система: Связь с нодой установлена.");
+        } catch (e) {
+            alert("Ошибка BLE: " + e.message);
         }
     }
 
-    function initMQTT() {
-        if (!navigator.onLine) return;
-        mqttClient = mqtt.connect(MQTT_CONFIG.host, { username: MQTT_CONFIG.user, password: MQTT_CONFIG.pass, clientId: 'v_'+Math.random().toString(16).substr(2, 4) });
-        mqttClient.on('connect', () => {
-            document.getElementById('net-status').innerText = "ONLINE";
-            document.getElementById('net-status').style.color = "var(--prim)";
-            mqttClient.subscribe(currentTopic);
-        });
-        mqttClient.on('message', (topic, msg) => {
-            const dec = crypt(msg.toString(), cryptoKey);
-            addUI(dec, 'other');
-        });
+    function sendMsg() {
+        const input = document.getElementById('msg-input');
+        if (!input.value) return;
+
+        // В Meshtastic сообщение должно быть упаковано в Protobuf
+        // Для примера отправляем сырой текст (в реальности нужен TextEncoder)
+        let encoder = new TextEncoder();
+        let data = encoder.encode(input.value);
+        
+        bleCharacteristic.writeValue(data); 
+        logToChat("Вы: " + input.value);
+        input.value = "";
     }
 
-    function startSession() {
-        const n = document.getElementById('user-nick').value.trim();
-        if(!n) return;
-        localStorage.setItem('m_nick', n);
-        document.getElementById('display-name').innerText = n.toUpperCase();
-        document.getElementById('screen-nick').classList.remove('active');
-        document.getElementById('screen-chat').classList.add('active');
+    function logToChat(txt) {
+        const win = document.getElementById('chat-window');
+        win.innerHTML += `<div><small>[${new Date().toLocaleTimeString()}]</small> ${txt}</div>`;
+        win.scrollTop = win.scrollHeight;
     }
-
-    async function sendMsg() {
-        const i = document.getElementById('chat-input'), n = localStorage.getItem('m_nick');
-        if(!i.value.trim()) return;
-        const txt = `${n}: ${i.value.trim()}`;
-        addUI(txt, 'self');
-        try { await toChar.writeValue(new TextEncoder().encode(txt)); } catch(e){}
-        if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
-        i.value = "";
-    }
-
-    function handleRadioIn(e) {
-        const data = new Uint8Array(e.target.value.buffer);
-        if(data[0] === 0x08) document.getElementById('batt-info').innerText = `🔋 ${data[1]}%`;
-        const t = new TextDecoder().decode(data).replace(/[^\x20-\x7EА-Яа-яЁё:/,;=.-]/g, '');
-        if(t.includes(':')) {
-            addUI(t, 'other');
-            if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(t, cryptoKey));
-        }
-    }
-
-    function addUI(t, cl) {
-        const b = document.getElementById('messages'), e = document.createElement('div');
-        e.className = `msg ${cl}`; e.innerText = t;
-        b.appendChild(e); b.scrollTop = b.scrollHeight;
-    }
-
-    async function triggerSOS() { 
-        const txt = `SOS:${localStorage.getItem('m_nick')}`;
-        addUI("🚨 SOS ОТПРАВЛЕН", "self"); 
-        if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
-    }
-
-    function sendLocation() { 
-        navigator.geolocation.getCurrentPosition(p => {
-            const txt = `LOC:${localStorage.getItem('m_nick')}:${p.coords.latitude.toFixed(6)}:${p.coords.longitude.toFixed(6)}`;
-            addUI("📍 Координаты отправлены", "self"); 
-            if(mqttClient?.connected) mqttClient.publish(currentTopic, crypt(txt, cryptoKey));
-        }); 
-    }
-
-    document.getElementById('chat-input').onkeypress = e => { if(e.key==='Enter') sendMsg(); };
 </script>
 </body>
 </html>
