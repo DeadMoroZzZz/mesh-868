@@ -9,13 +9,12 @@
     
     <style>
         :root { --bg: #0b0e14; --accent: #00e676; --text: #e0e0e0; --error: #ff5252; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; min-height: 100vh; justify-content: center; }
-        .terminal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 100%; max-width: 450px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); border: 1px solid #30363d; }
-        h2 { color: var(--accent); margin: 0 0 20px 0; font-weight: 400; text-transform: uppercase; text-align: center; letter-spacing: 1px; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; min-height: 100vh; justify-content: center; }
+        .terminal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 100%; max-width: 450px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+        h2 { color: var(--accent); margin: 0 0 20px 0; font-weight: 400; text-transform: uppercase; text-align: center; }
         input { background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; width: calc(100% - 26px); margin-bottom: 15px; border-radius: 6px; font-size: 16px; }
-        button { background: var(--accent); color: #000; border: none; padding: 14px; width: 100%; cursor: pointer; font-weight: 700; border-radius: 6px; text-transform: uppercase; transition: 0.2s; }
-        button:active { transform: scale(0.98); }
-        #console { background: #000; height: 200px; border-radius: 6px; padding: 12px; font-family: 'Consolas', monospace; font-size: 11px; overflow-y: auto; margin-bottom: 15px; color: #8b949e; border: 1px solid #30363d; line-height: 1.4; }
+        button { background: var(--accent); color: #000; border: none; padding: 14px; width: 100%; cursor: pointer; font-weight: 700; border-radius: 6px; text-transform: uppercase; }
+        #console { background: #000; height: 180px; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 11px; overflow-y: auto; margin-bottom: 15px; color: #8b949e; border: 1px solid #30363d; line-height: 1.4; }
         .hidden { display: none; }
     </style>
 </head>
@@ -25,14 +24,14 @@
         <h2>Mesh Access</h2>
         <input type="text" id="node-id" placeholder="ID Ноды (напр. !59cf6014)">
         <input type="password" id="pass-key" placeholder="Ликвидный пароль">
-        <button onclick="validateAndLoad()">Проверить ключ</button>
+        <button onclick="validateAndLoad()">Войти в систему</button>
     </div>
 
     <div id="main-app" class="terminal hidden">
         <h2>Mesh 868 Secure</h2>
-        <div id="console">Система ожидает авторизации...</div>
+        <div id="console">Готов к поиску устройств...</div>
         
-        <button id="connect-bt">Найти ноду по Bluetooth</button>
+        <button id="connect-bt">Связаться с нодой (BLE)</button>
         
         <div style="margin-top: 20px;">
             <input type="text" id="msg-input" placeholder="Введите сообщение...">
@@ -43,20 +42,9 @@
     <script type="text/plain" id="proto-data">
         syntax = "proto3";
         package meshtastic;
-        message ToRadio {
-            oneof payload_variant { MeshPacket packet = 1; }
-        }
-        message MeshPacket {
-            uint32 to = 1;
-            uint32 from = 2;
-            Data decoded = 3;
-            uint32 id = 4;
-            bool want_ack = 5;
-        }
-        message Data {
-            string portnum = 1;
-            bytes payload = 2;
-        }
+        message ToRadio { oneof payload_variant { MeshPacket packet = 1; } }
+        message MeshPacket { uint32 to = 1; uint32 from = 2; Data decoded = 3; uint32 id = 4; bool want_ack = 5; }
+        message Data { string portnum = 1; bytes payload = 2; }
     </script>
 
     <script>
@@ -66,92 +54,73 @@
 
         let root, ToRadio, bluetoothChar;
 
-        // 1. ПРОВЕРКА ПАРОЛЯ
         function validateAndLoad() {
             const id = document.getElementById('node-id').value.trim().toLowerCase();
             const pass = document.getElementById('pass-key').value;
-            
-            try {
-                const expectedHash = CryptoJS.HmacSHA256(id, MASTER_SECRET).toString();
-                const validPass = expectedHash.substring(0, 8);
+            const validPass = CryptoJS.HmacSHA256(id, MASTER_SECRET).toString().substring(0, 8);
 
-                if (pass === validPass) {
-                    document.getElementById('auth-box').classList.add('hidden');
-                    document.getElementById('main-app').classList.remove('hidden');
-                    initProtobuf();
-                } else {
-                    alert("Ошибка: Ключ не соответствует ID ноды!");
-                }
-            } catch (e) {
-                alert("Ошибка библиотеки CryptoJS. Проверьте интернет при первом запуске.");
+            if (pass === validPass) {
+                document.getElementById('auth-box').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                initProtobuf();
+            } else {
+                alert("Ошибка: Пароль не ликвиден!");
             }
         }
 
-        // 2. ИНИЦИАЛИЗАЦИЯ PROTOBUF
         function initProtobuf() {
-            try {
-                const protoContent = document.getElementById('proto-data').textContent;
-                root = protobuf.parse(protoContent).root;
-                ToRadio = root.lookupType("meshtastic.ToRadio");
-                printLog("Протоколы десериализованы.");
-            } catch (e) {
-                printLog("Ошибка Protobuf: " + e.message, "var(--error)");
-            }
+            const protoContent = document.getElementById('proto-data').textContent;
+            root = protobuf.parse(protoContent).root;
+            ToRadio = root.lookupType("meshtastic.ToRadio");
         }
 
-        // 3. ПОДКЛЮЧЕНИЕ BLUETOOTH С ИСПРАВЛЕННЫМ ПОИСКОМ
+        // РАБОЧИЙ ПОИСК ИЗ ВАШЕГО ПРИМЕРА
         document.getElementById('connect-bt').onclick = async () => {
-            printLog("Запуск сканирования...");
+            printLog("Запуск всеядного поиска...");
             try {
-                // Использование фильтра по UUID принуждает браузер видеть нужный сервис
+                // Используем acceptAllDevices чтобы увидеть ноду без фильтров
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [MESH_SERVICE_UUID] }],
-                    optionalServices: [MESH_SERVICE_UUID]
+                    acceptAllDevices: true,
+                    optionalServices: [MESH_SERVICE_UUID] 
                 });
 
-                printLog(`Соединение с ${device.name}...`);
+                printLog(`Подключение к: ${device.name || 'Device'}...`);
                 const server = await device.gatt.connect();
                 
-                printLog("GATT сервер подключен. Поиск сервиса...");
+                printLog("GATT подключен. Поиск сервиса Meshtastic...");
                 const service = await server.getPrimaryService(MESH_SERVICE_UUID);
                 
-                printLog("Сервис найден. Поиск характеристики...");
+                printLog("Сервис найден. Открываю канал...");
                 bluetoothChar = await service.getCharacteristic(MESH_CHAR_UUID);
                 
                 printLog("СВЯЗЬ УСТАНОВЛЕНА!", "var(--accent)");
-                document.getElementById('connect-bt').innerText = "ПОДКЛЮЧЕНО: " + device.name;
+                document.getElementById('connect-bt').innerText = "ПОДКЛЮЧЕНО: " + (device.name || "Node");
                 document.getElementById('connect-bt').style.background = "#333";
+
             } catch (e) {
                 printLog("ОШИБКА: " + e.message, "var(--error)");
                 console.error(e);
             }
         };
 
-        // 4. ОТПРАВКА
         async function sendMeshMessage() {
             const text = document.getElementById('msg-input').value;
-            if (!bluetoothChar) return alert("Сначала подключите Bluetooth!");
-            if (!text) return;
+            if (!bluetoothChar || !text) return alert("Нет связи с нодой!");
 
             try {
                 const payload = {
                     packet: {
-                        decoded: { 
-                            portnum: "TEXT_MESSAGE_APP", 
-                            payload: new TextEncoder().encode(text) 
-                        },
+                        decoded: { portnum: "TEXT_MESSAGE_APP", payload: new TextEncoder().encode(text) },
                         to: 0xFFFFFFFF,
                         wantAck: true
                     }
                 };
-
                 const buffer = ToRadio.encode(ToRadio.create(payload)).finish();
                 await bluetoothChar.writeValue(buffer);
-                
                 printLog(`ОТПРАВЛЕНО: ${text}`, "white");
                 document.getElementById('msg-input').value = "";
             } catch (e) {
-                printLog("Ошибка отправки: " + e.message, "var(--error)");
+                printLog("Ошибка передачи: " + e.message, "var(--error)");
             }
         }
 
