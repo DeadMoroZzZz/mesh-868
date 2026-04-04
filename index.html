@@ -3,102 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mesh Secure Interface</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <title>Mesh 868 Secure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root { --bg: #0f0f0f; --card: #1e1e1e; --accent: #00e676; --text: #e0e0e0; }
-        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .app-container { background: var(--card); padding: 2rem; border-radius: 16px; width: 100%; max-width: 450px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
-        .hidden { display: none; }
-        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #333; background: #111; color: #fff; box-sizing: border-box; }
-        button { width: 100%; padding: 14px; border: none; border-radius: 8px; background: var(--accent); color: #000; font-weight: bold; cursor: pointer; transition: 0.3s; }
-        button:hover { opacity: 0.8; }
-        #chat-window { height: 300px; overflow-y: auto; background: #121212; border-radius: 8px; padding: 10px; margin-bottom: 10px; border: 1px solid #222; }
-        .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; background: red; margin-right: 5px; }
-        .connected { background: var(--accent); }
+        body { background-color: #09090b; color: #f4f4f5; font-family: sans-serif; }
+        .chat-container::-webkit-scrollbar { width: 4px; }
+        .chat-container::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+        .hidden { display: none !important; }
     </style>
 </head>
-<body>
+<body class="flex items-center justify-center min-h-screen p-4">
 
-<div class="app-container" id="login-screen">
-    <h2 style="text-align:center">Mesh 868 Access</h2>
-    <p style="font-size: 0.9em; color: #888;">Введите ваш персональный ключ ноды</p>
-    <input type="text" id="pass-key" placeholder="Пример: A4B7D2C9" maxlength="8">
-    <button onclick="authenticate()">Авторизоваться</button>
-</div>
-
-<div class="app-container hidden" id="main-app">
-    <div style="margin-bottom: 15px;">
-        <span id="status-dot" class="status-dot"></span>
-        <small id="status-text">Нода не найдена</small>
-    </div>
-    <div id="chat-window"></div>
-    <input type="text" id="msg-input" placeholder="Введите сообщение...">
-    <button id="ble-btn" onclick="initBle()">Подключить Bluetooth</button>
-    <button id="send-btn" class="hidden" onclick="sendMsg()">Отправить в эфир</button>
-</div>
-
-<script>
-    // Массив из 100 паролей (сокращено для примера)
-    const VAULT = ["A4B7D2C9", "7D8E9F0A", "1B2C3D4E", "F5A6B7C8"]; // Сюда вставить все 100
-
-    function authenticate() {
-        const input = document.getElementById('pass-key').value.toUpperCase();
-        if (VAULT.includes(input)) {
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-        } else {
-            alert("Ключ не валиден!");
-        }
-    }
-
-    let bleDevice, bleCharacteristic;
-
-    async function initBle() {
-        try {
-            // Стандартный UUID сервиса Meshtastic
-            const SERVICE_UUID = "cb0b9a0b-184a-46a6-bc0d-20591b9e0441";
-            const CHAR_UUID    = "2566085a-035b-4375-9c59-d890041235b2";
-
-            bleDevice = await navigator.bluetooth.requestDevice({
-                filters: [{ namePrefix: 'Meshtastic' }],
-                optionalServices: [SERVICE_UUID]
-            });
-
-            const server = await bleDevice.gatt.connect();
-            const service = await server.getPrimaryService(SERVICE_UUID);
-            bleCharacteristic = await service.getCharacteristic(CHAR_UUID);
-
-            document.getElementById('status-dot').classList.add('connected');
-            document.getElementById('status-text').innerText = "Подключено: " + bleDevice.name;
-            document.getElementById('ble-btn').classList.add('hidden');
-            document.getElementById('send-btn').classList.remove('hidden');
-            
-            logToChat("Система: Связь с нодой установлена.");
-        } catch (e) {
-            alert("Ошибка BLE: " + e.message);
-        }
-    }
-
-    function sendMsg() {
-        const input = document.getElementById('msg-input');
-        if (!input.value) return;
-
-        // В Meshtastic сообщение должно быть упаковано в Protobuf
-        // Для примера отправляем сырой текст (в реальности нужен TextEncoder)
-        let encoder = new TextEncoder();
-        let data = encoder.encode(input.value);
+    <div id="login-screen" class="w-full max-w-md bg-zinc-900 border border-zinc-800 p-8 rounded-2xl shadow-2xl">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-black text-blue-500 tracking-tighter italic">MESH 868</h1>
+            <p class="text-zinc-500 text-sm mt-2">Введите персональный код доступа устройства</p>
+        </div>
         
-        bleCharacteristic.writeValue(data); 
-        logToChat("Вы: " + input.value);
-        input.value = "";
-    }
+        <div class="space-y-4">
+            <input type="text" id="access-code" placeholder="Код доступа" 
+                   class="w-full bg-zinc-950 border border-zinc-800 p-4 rounded-xl text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:border-blue-600 transition-all">
+            
+            <button id="btn-connect" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95">
+                ПОДКЛЮЧИТЬ BLE
+            </button>
+        </div>
+        <p class="text-center text-[10px] text-zinc-600 mt-6 uppercase tracking-widest">End-to-End Encrypted Mesh Network</p>
+    </div>
 
-    function logToChat(txt) {
-        const win = document.getElementById('chat-window');
-        win.innerHTML += `<div><small>[${new Date().toLocaleTimeString()}]</small> ${txt}</div>`;
-        win.scrollTop = win.scrollHeight;
-    }
-</script>
+    <div id="chat-screen" class="hidden w-full max-w-2xl h-[90vh] flex flex-col bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
+        <header class="bg-zinc-900/50 backdrop-blur p-4 border-b border-zinc-800 flex justify-between items-center">
+            <div>
+                <h2 class="font-bold text-blue-400 text-sm flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    MESH 868 SECURE
+                </h2>
+                <span id="device-name" class="text-[10px] text-zinc-500 uppercase">Ожидание данных...</span>
+            </div>
+            <button onclick="location.reload()" class="text-xs text-zinc-500 hover:text-red-400">Выход</button>
+        </header>
+        
+        <div id="messages" class="chat-container flex-1 overflow-y-auto p-4 space-y-3 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]">
+            </div>
+
+        <div class="p-4 bg-zinc-900 border-t border-zinc-800">
+            <div class="flex gap-2">
+                <input type="text" id="msg-input" placeholder="Сообщение..." 
+                       class="flex-1 bg-zinc-950 border border-zinc-800 p-3 rounded-xl focus:outline-none focus:border-blue-600 text-sm">
+                <button id="btn-send" class="bg-blue-600 hover:bg-blue-700 px-6 rounded-xl transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Client } from 'https://cdn.skypack.dev/@meshtastic/core';
+        import { BleTransport } from 'https://cdn.skypack.dev/@meshtastic/transport-web-bluetooth';
+
+        const client = new Client();
+        const transport = new BleTransport();
+
+        // СЕКРЕТНАЯ СОЛЬ (измените её на свою, чтобы коды были уникальными для вашей партии)
+        const SALT = "v_zakharchenko_secure_mesh_2026";
+
+        // Генерация 6-значного кода на основе ID устройства
+        async function generateKey(deviceId) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(deviceId + SALT);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const numeric = hashArray.map(b => b.toString()).join('');
+            return numeric.substring(0, 6);
+        }
+
+        const loginScreen = document.getElementById('login-screen');
+        const chatScreen = document.getElementById('chat-screen');
+        const messagesDiv = document.getElementById('messages');
+        const msgInput = document.getElementById('msg-input');
+
+        // Кнопка подключения
+        document.getElementById('btn-connect').addEventListener('click', async () => {
+            const userCode = document.getElementById('access-code').value;
+            if (!userCode) return alert("Введите код доступа!");
+
+            try {
+                // Инициализация Bluetooth
+                await transport.connect();
+                const deviceId = transport.device.id;
+                
+                // Проверка кода
+                const validCode = await generateKey(deviceId);
+
+                if (userCode === validCode) {
+                    await client.connect(transport);
+                    
+                    document.getElementById('device-name').innerText = transport.device.name || "Connected Node";
+                    loginScreen.classList.add('hidden');
+                    chatScreen.classList.remove('hidden');
+                    renderMsg("Система", "Шифрованное соединение установлено. Добро пожаловать в сеть.", "sys");
+                } else {
+                    alert("ОШИБКА: Неверный код доступа для данного устройства.");
+                    console.error("Ожидался код:", validCode); // Поможет вам узнать код при первом запуске
+                    await transport.disconnect();
+                }
+            } catch (err) {
+                alert("Ошибка Bluetooth: " + err.message);
+            }
+        });
+
+        // Отправка текста
+        async function send() {
+            const text = msgInput.value.trim();
+            if (!text) return;
+            try {
+                await client.sendText(text);
+                renderMsg("Вы", text, "me");
+                msgInput.value = "";
+            } catch (e) { console.error(e); }
+        }
+
+        document.getElementById('btn-send').addEventListener('click', send);
+        msgInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') send(); });
+
+        // Прием сообщений
+        client.onTextPacket.subscribe((packet) => {
+            const sender = `Node ${packet.from.toString(16)}`;
+            renderMsg(sender, packet.payload, "other");
+        });
+
+        // Функция отрисовки сообщений
+        function renderMsg(sender, text, type) {
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex flex-col ${type === 'me' ? 'items-end' : 'items-start'}`;
+            
+            let bg = "bg-zinc-800 text-zinc-100";
+            if(type === 'me') bg = "bg-blue-600 text-white";
+            if(type === 'sys') bg = "bg-zinc-950 text-zinc-500 border border-zinc-800 text-[10px] uppercase text-center w-full";
+
+            wrapper.innerHTML = `
+                ${type !== 'sys' ? `<span class="text-[10px] text-zinc-500 mb-1 px-2">${sender}</span>` : ''}
+                <div class="${bg} px-4 py-2 rounded-2xl max-w-[80%] text-sm shadow-sm">
+                    ${text}
+                </div>
+            `;
+            messagesDiv.appendChild(wrapper);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
 </body>
 </html>
