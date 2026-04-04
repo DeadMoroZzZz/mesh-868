@@ -2,137 +2,88 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mesh 868 Secure Terminal</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.2.4/dist/protobuf.min.js"></script>
     
     <style>
-        :root { --bg: #0b0e14; --accent: #00e676; --text: #e0e0e0; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; }
-        .terminal { background: #161b22; border: 1px solid #30363d; border-radius: 8px; width: 100%; max-width: 500px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        input { background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; width: calc(100% - 26px); margin-bottom: 10px; border-radius: 4px; }
-        button { background: var(--accent); color: #000; border: none; padding: 12px; width: 100%; cursor: pointer; font-weight: 600; border-radius: 4px; }
-        #console { background: #000; height: 200px; border-radius: 4px; padding: 10px; font-family: monospace; font-size: 13px; overflow-y: auto; margin-bottom: 10px; color: #8b949e; border: 1px solid #30363d; }
+        :root { --bg: #0b0e14; --accent: #00e676; --text: #e0e0e0; --error: #ff5252; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; min-height: 100vh; justify-content: center; }
+        .terminal { background: #161b22; border: 1px solid #30363d; border-radius: 12px; width: 100%; max-width: 450px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+        h2 { color: var(--accent); margin: 0 0 20px 0; font-weight: 400; text-transform: uppercase; letter-spacing: 2px; text-align: center; }
+        input { background: #0d1117; border: 1px solid #30363d; color: white; padding: 12px; width: calc(100% - 26px); margin-bottom: 15px; border-radius: 6px; font-size: 16px; transition: border 0.3s; }
+        input:focus { border-color: var(--accent); outline: none; }
+        button { background: var(--accent); color: #000; border: none; padding: 14px; width: 100%; cursor: pointer; font-weight: 700; border-radius: 6px; text-transform: uppercase; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        #console { background: #000; height: 180px; border-radius: 6px; padding: 12px; font-family: 'Consolas', monospace; font-size: 12px; overflow-y: auto; margin-bottom: 15px; color: #8b949e; border: 1px solid #30363d; line-height: 1.5; }
         .hidden { display: none; }
+        .status-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
     </style>
 </head>
 <body>
 
     <div id="auth-box" class="terminal">
-        <h2 style="color: var(--accent); margin-top: 0;">Access Portal</h2>
-        <input type="text" id="node-id" placeholder="ID Ноды (например, !59cf6014)">
+        <h2>Mesh Login</h2>
+        <input type="text" id="node-id" placeholder="ID Ноды (напр. !59cf6014)">
         <input type="password" id="pass-key" placeholder="Ликвидный пароль">
-        <button onclick="validateAndLoad()">ПРОВЕРИТЬ И ЗАПУСТИТЬ</button>
+        <button onclick="validateAndLoad()">Проверить доступ</button>
     </div>
 
     <div id="main-app" class="terminal hidden">
-        <h2 style="color: var(--accent); margin-top: 0;">Mesh 868 Secure</h2>
-        <div id="console">Система готова. Ожидание инициализации Protobuf...</div>
-        <button id="connect-bt">СВЯЗАТЬСЯ С НОДОЙ ПО BT</button>
-        <div style="margin-top: 15px;">
-            <input type="text" id="msg-input" placeholder="Введите текст сообщения...">
-            <button onclick="sendMeshMessage()">ОТПРАВИТЬ ПАКЕТ</button>
+        <h2>Mesh 868 Secure</h2>
+        <div id="console">Система инициализирована...</div>
+        
+        <button id="connect-bt">Связаться по Bluetooth</button>
+        
+        <div style="margin-top: 20px;">
+            <input type="text" id="msg-input" placeholder="Сообщение в сеть...">
+            <button onclick="sendMeshMessage()" style="background: #2196f3; color: white;">Отправить пакет</button>
         </div>
     </div>
 
     <script>
+        // Конфигурация безопасности
         const MASTER_SECRET = "PROJECT_MESH_2026"; 
-        let root, ToRadio, MeshPacket; // Переменные для Protobuf схем
+        let root, ToRadio, bluetoothChar;
 
-        // --- 1. ЗАГРУЗКА PROTO С ГИТХАБА ---
+        // 1. ВАЛИДАЦИЯ ПАРОЛЯ
+        function validateAndLoad() {
+            const id = document.getElementById('node-id').value.trim().toLowerCase();
+            const pass = document.getElementById('pass-key').value;
+            
+            // Расчет корректного пароля
+            const expectedHash = CryptoJS.HmacSHA256(id, MASTER_SECRET).toString();
+            const validPass = expectedHash.substring(0, 8);
+
+            if (pass === validPass) {
+                document.getElementById('auth-box').classList.add('hidden');
+                document.getElementById('main-app').classList.remove('hidden');
+                initProtobuf();
+            } else {
+                alert("ОШИБКА: Пароль не ликвиден для данной ноды!");
+            }
+        }
+
+        // 2. ЗАГРУЗКА PROTO С ГИТХАБА
         async function initProtobuf() {
-            printLog("Загрузка mesh.proto с репозитория...");
+            printLog("Загрузка протоколов Meshtastic...");
             try {
-                // Используем raw-ссылку на актуальный proto файл
                 const url = "https://raw.githubusercontent.com/meshtastic/protobufs/master/meshtastic/mesh.proto";
                 const response = await fetch(url);
                 const protoText = await response.text();
                 
-                // Парсим схему напрямую из текста
                 root = protobuf.parse(protoText).root;
                 ToRadio = root.lookupType("meshtastic.ToRadio");
-                MeshPacket = root.lookupType("meshtastic.MeshPacket");
-                
-                printLog("Схемы Protobuf успешно десериализованы.");
+                printLog("Схемы Protobuf готовы к работе.", "var(--accent)");
             } catch (e) {
-                printLog("Ошибка загрузки proto: " + e.message, "red");
+                printLog("Ошибка Protobuf: используйте HTTPS или локальный сервер", "var(--error)");
             }
         }
 
-        function validateAndLoad() {
-            const id = document.getElementById('node-id').value.trim();
-            const pass = document.getElementById('pass-key').value;
-            
-            const correctPass = CryptoJS.HmacSHA256(id, MASTER_SECRET).toString().substring(0, 8);
-
-            if (pass === correctPass) {
-                document.getElementById('auth-box').classList.add('hidden');
-                document.getElementById('main-app').classList.remove('hidden');
-                initProtobuf(); // Начинаем загрузку схем после входа
-            } else {
-                alert("Пароль не валиден для данной ноды!");
-            }
-        }
-
-        // --- 2. ЛОГИКА СВЯЗИ ---
-        let bluetoothCharacteristic;
-
+        // 3. BLUETOOTH С ОТКРЫТЫМ ФИЛЬТРОМ
         document.getElementById('connect-bt').onclick = async () => {
+            printLog("Поиск устройств...");
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'Meshtastic' }],
-                    optionalServices: ['cb0e203c-c349-44e3-b06d-741a455a1a1a']
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService('cb0e203c-c349-44e3-b06d-741a455a1a1a');
-                // Характеристика "ToRadio" (отправка на ноду)
-                bluetoothCharacteristic = await service.getCharacteristic('8ba2dfa0-4a4e-4d44-9355-66191007bc43');
-                printLog("Bluetooth соединение установлено.");
-            } catch (e) {
-                printLog("BT Error: " + e.message, "red");
-            }
-        };
-
-        async function sendMeshMessage() {
-            const text = document.getElementById('msg-input').value;
-            if (!ToRadio || !bluetoothCharacteristic) {
-                return alert("Система не готова или BT не подключен!");
-            }
-
-            // Создаем структуру сообщения по спецификации Meshtastic
-            const payload = {
-                packet: {
-                    decoded: {
-                        portnum: "TEXT_MESSAGE_APP",
-                        payload: new TextEncoder().encode(text)
-                    },
-                    to: 0xFFFFFFFF, // Вещание на всех (Broadcast)
-                    wantAck: true
-                }
-            };
-
-            const errMsg = ToRadio.verify(payload);
-            if (errMsg) throw Error(errMsg);
-
-            const buffer = ToRadio.encode(ToRadio.create(payload)).finish();
-            
-            try {
-                await bluetoothCharacteristic.writeValue(buffer);
-                printLog(`Отправлено: ${text}`);
-                document.getElementById('msg-input').value = "";
-            } catch (e) {
-                printLog("Ошибка записи: " + e.message, "red");
-            }
-        }
-
-        function printLog(txt, color = "") {
-            const log = document.getElementById('console');
-            const entry = document.createElement('div');
-            if (color) entry.style.color = color;
-            entry.innerText = `> ${txt}`;
-            log.appendChild(entry);
-            log.scrollTop = log.scrollHeight;
-        }
-    </script>
-</body>
-</html>
+                    acceptAllDevices: true, // Искать все устройства (
